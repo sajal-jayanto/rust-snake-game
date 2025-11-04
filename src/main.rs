@@ -39,9 +39,10 @@ impl Snake {
     return *self.body.front().unwrap();
   }
 
-  fn move_forward(&mut self, food: Position) -> bool {
+  fn move_forward(&mut self, food: Position) -> (bool, bool){
     let current_head = self.head(); 
     let mut grow = false;
+    let mut hit_self = true;
     let (dx, dy) = match self.direction {
       Direction::Up => (0, -1),
       Direction::Down => (0, 1),
@@ -54,14 +55,23 @@ impl Snake {
       y: (current_head.y + dy).rem_euclid(GRID_SIZE + 1),
     };
 
+    if self.body.contains(&new_head){
+      return (grow, hit_self);
+    } else {
+      hit_self = false
+    }
+
     if new_head.x == food.x && new_head.y == food.y {
       grow = true;
     }
+
     self.body.push_front(new_head);
+    
     if !grow {
       self.body.pop_back();
     }
-    return grow;
+
+    return (grow, hit_self);
   }
 
   fn change_direction(&mut self, new_direction: Direction) {
@@ -78,48 +88,66 @@ async fn main() {
   let mut snake = Snake::new();
   let mut timer = 0.0;
   let mut food = random_food(&snake);
+  let mut game_over = false;
+  let mut score = 0;
   
   loop {
-    timer += get_frame_time();
-    if let Some(key) = get_last_key_pressed() {
-      match key {
-        KeyCode::Up    => snake.change_direction(Direction::Up),
-        KeyCode::Down  => snake.change_direction(Direction::Down),
-        KeyCode::Left  => snake.change_direction(Direction::Left),
-        KeyCode::Right => snake.change_direction(Direction::Right),
-        _ => {} 
+    clear_background(BLACK);
+    draw_text(&format!("Score: {}", score), screen_width() - 100.0, 20.0, 20.0, YELLOW);
+    if game_over {
+      draw_text("GAME OVER! Press R to restart", 130.0, 300.0, 30.0, YELLOW);
+      if is_key_pressed(KeyCode::R) {
+        snake = Snake::new();
+        food = random_food(&snake);
+        timer = 0.0;
+        game_over = false;
+        score = 0;
       }
-    }
-    
-    for segment in &snake.body {
-      draw_rectangle(
-        get_position(segment.x),
-        get_position(segment.y),
-        CELL_SIZE - 2.00,
-        CELL_SIZE - 2.00,
-        GREEN,
+    } 
+    else {
+      timer += get_frame_time();
+      if let Some(key) = get_last_key_pressed() {
+        match key {
+          KeyCode::Up    => snake.change_direction(Direction::Up),
+          KeyCode::Down  => snake.change_direction(Direction::Down),
+          KeyCode::Left  => snake.change_direction(Direction::Left),
+          KeyCode::Right => snake.change_direction(Direction::Right),
+          _ => {} 
+        }
+      }
+      
+      for segment in &snake.body {
+        draw_rectangle(
+          get_position(segment.x),
+          get_position(segment.y),
+          CELL_SIZE - 2.00,
+          CELL_SIZE - 2.00,
+          GREEN,
+        );
+      }
+
+      draw_circle(
+        get_position(food.x) + CELL_SIZE / 2.0, 
+        get_position(food.y) + CELL_SIZE / 2.0, 
+        CELL_SIZE / 2.0 - 2.0,
+        RED
       );
-    }
 
-    draw_rectangle(
-      get_position(food.x),
-      get_position(food.y),
-      CELL_SIZE - 2.00,
-      CELL_SIZE - 2.00,
-      RED,
-    );
-
-    if timer > SPEED {
-      timer = 0.0;
-      let eaten_food = snake.move_forward(food);
-      if eaten_food {
-        food = random_food(&snake)
+      if timer > SPEED {
+        timer = 0.0;
+        let (eaten_food, hit_self) = snake.move_forward(food);
+        if eaten_food {
+          score += 10;
+          food = random_food(&snake)
+        }
+        if hit_self{
+          game_over = true;
+        }
       }
     }
 
     next_frame().await      
   }
-
 }
 
 fn window_conf() -> Conf {
